@@ -288,6 +288,11 @@
     <script>
         let draggedElement = null;
         let originalParent = null;
+        
+        // 모바일 터치 지원을 위한 변수들
+        let touchStartElement = null;
+        let isDragging = false;
+        let touchOffset = { x: 0, y: 0 };
 
         // 배열을 랜덤하게 섞는 함수 (Fisher-Yates shuffle)
         function shuffleArray(array) {
@@ -302,6 +307,153 @@
         // 드래그 중 스크롤을 위한 변수들
         let dragScrollInterval = null;
         let isNearEdge = false;
+
+        // 터치 시작 (모바일)
+        function handleTouchStart(e) {
+            // 완성된 슬롯의 염색체는 터치 불가
+            const parentSlot = e.target.closest('.chromosome-slot');
+            if (parentSlot && parentSlot.classList.contains('complete')) {
+                return;
+            }
+            
+            touchStartElement = e.currentTarget;
+            const touch = e.touches[0];
+            const rect = touchStartElement.getBoundingClientRect();
+            
+            touchOffset.x = touch.clientX - rect.left;
+            touchOffset.y = touch.clientY - rect.top;
+            
+            // 터치 시작 시 약간의 지연 후 드래그 시작
+            setTimeout(() => {
+                if (touchStartElement) {
+                    isDragging = true;
+                    draggedElement = touchStartElement;
+                    originalParent = draggedElement.parentElement;
+                    draggedElement.classList.add('dragging');
+                    
+                    console.log('터치 드래그 시작:', draggedElement.dataset.chrId);
+                }
+            }, 100);
+        }
+
+        // 터치 이동 (모바일)
+        function handleTouchMove(e) {
+            if (!isDragging || !draggedElement) return;
+            
+            e.preventDefault();
+            const touch = e.touches[0];
+            
+            // 드래그 중인 요소를 마우스 위치로 이동
+            draggedElement.style.position = 'fixed';
+            draggedElement.style.left = (touch.clientX - touchOffset.x) + 'px';
+            draggedElement.style.top = (touch.clientY - touchOffset.y) + 'px';
+            draggedElement.style.zIndex = '9999';
+            draggedElement.style.pointerEvents = 'none';
+            
+            // 터치 위치 아래의 요소 찾기
+            const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+            const dropTarget = elementBelow?.closest('.chromosome-slot, .chromosome-bank');
+            
+            // 모든 드래그 오버 효과 제거
+            document.querySelectorAll('.chromosome-slot, .chromosome-bank').forEach(el => {
+                el.classList.remove('drag-over');
+            });
+            
+            // 유효한 드롭 타겟에 효과 추가
+            if (dropTarget) {
+                if (dropTarget.classList.contains('chromosome-slot')) {
+                    if (!dropTarget.classList.contains('complete') && dropTarget.children.length < 2) {
+                        dropTarget.classList.add('drag-over');
+                    }
+                } else if (dropTarget.classList.contains('chromosome-bank')) {
+                    const parentSlot = draggedElement.closest('.chromosome-slot');
+                    if (!parentSlot || !parentSlot.classList.contains('complete')) {
+                        dropTarget.classList.add('drag-over');
+                    }
+                }
+            }
+        }
+
+        // 터치 종료 (모바일)
+        function handleTouchEnd(e) {
+            if (!isDragging || !draggedElement) {
+                touchStartElement = null;
+                return;
+            }
+            
+            const touch = e.changedTouches[0];
+            const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+            const dropTarget = elementBelow?.closest('.chromosome-slot, .chromosome-bank');
+            
+            console.log('터치 드롭 시도:', draggedElement.dataset.chrId, '→', dropTarget?.dataset.number || dropTarget?.className);
+            
+            // 드래그 스타일 초기화
+            draggedElement.style.position = '';
+            draggedElement.style.left = '';
+            draggedElement.style.top = '';
+            draggedElement.style.zIndex = '';
+            draggedElement.style.pointerEvents = '';
+            draggedElement.classList.remove('dragging');
+            
+            // 모든 드래그 오버 효과 제거
+            document.querySelectorAll('.chromosome-slot, .chromosome-bank').forEach(el => {
+                el.classList.remove('drag-over');
+            });
+            
+            let dropSuccess = false;
+            
+            if (dropTarget) {
+                if (dropTarget.classList.contains('chromosome-slot')) {
+                    // 슬롯에 드롭
+                    if (!dropTarget.classList.contains('complete') && dropTarget.children.length < 2) {
+                        // 원래 슬롯 상태 업데이트
+                        if (originalParent && originalParent.classList.contains('chromosome-slot')) {
+                            originalParent.classList.remove('complete', 'incorrect');
+                            if (originalParent.children.length > 1) {
+                                setTimeout(() => checkSlotCompletion(originalParent), 50);
+                            }
+                        }
+                        
+                        draggedElement.classList.add('in-slot');
+                        dropTarget.appendChild(draggedElement);
+                        checkSlotCompletion(dropTarget);
+                        dropSuccess = true;
+                        
+                        console.log('터치 드롭 완료 (슬롯):', draggedElement.dataset.chrId);
+                    }
+                } else if (dropTarget.classList.contains('chromosome-bank')) {
+                    // 은행에 드롭
+                    const parentSlot = originalParent;
+                    if (!parentSlot || !parentSlot.classList.contains('complete')) {
+                        // 원래 슬롯 상태 업데이트
+                        if (originalParent && originalParent.classList.contains('chromosome-slot')) {
+                            originalParent.classList.remove('complete', 'incorrect');
+                            if (originalParent.children.length > 1) {
+                                setTimeout(() => checkSlotCompletion(originalParent), 50);
+                            }
+                        }
+                        
+                        draggedElement.classList.remove('in-slot');
+                        document.getElementById('chromosomesContainer').appendChild(draggedElement);
+                        dropSuccess = true;
+                        
+                        console.log('터치 드롭 완료 (은행):', draggedElement.dataset.chrId);
+                    }
+                }
+            }
+            
+            // 드롭에 실패했으면 원래 위치로 되돌리기
+            if (!dropSuccess && originalParent) {
+                originalParent.appendChild(draggedElement);
+                console.log('터치 드롭 취소:', draggedElement.dataset.chrId);
+            }
+            
+            // 변수 초기화
+            isDragging = false;
+            draggedElement = null;
+            originalParent = null;
+            touchStartElement = null;
+        }
 
         // 드래그 중 화면 가장자리에서 자동 스크롤
         function handleAutoScroll(e) {
@@ -439,9 +591,14 @@
                     chromosome.style.height = '40px'; /* 50px의 80% */
                 };
                 
-                // 드래그 이벤트 리스너
+                // 드래그 이벤트 리스너 (데스크톱)
                 chromosome.addEventListener('dragstart', handleDragStart);
                 chromosome.addEventListener('dragend', handleDragEnd);
+                
+                // 터치 이벤트 리스너 (모바일)
+                chromosome.addEventListener('touchstart', handleTouchStart, { passive: false });
+                chromosome.addEventListener('touchmove', handleTouchMove, { passive: false });
+                chromosome.addEventListener('touchend', handleTouchEnd, { passive: false });
                 
                 bank.appendChild(chromosome);
             });
