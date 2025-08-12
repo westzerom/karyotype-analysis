@@ -86,11 +86,20 @@
             background: rgba(46, 204, 113, 0.2);
             animation: completePulse 1s ease;
             pointer-events: none;
+            height: 100px; /* 적절한 높이 */
+            min-height: 100px;
+            max-height: 100px;
+            overflow: hidden;
+            align-items: center;
+            justify-content: center;
+            transform: scale(0.7); /* 슬롯 전체를 그룹으로 축소 */
+            transform-origin: center; /* 중앙 기준으로 축소 */
         }
 
         .chromosome-slot.complete .chromosome {
             pointer-events: auto;
-            transform: scale(0.4); /* 완성된 슬롯 내 염색체만 50% 더 축소 (0.8 × 0.5 = 0.4) */
+            margin: 2px; /* 원래 간격 유지 */
+            /* transform 제거 - 슬롯 전체 축소로 대체 */
         }
 
         .chromosome-slot.incorrect {
